@@ -163,9 +163,31 @@ func resourceAwsOpsworksApplicationCreate(d *schema.ResourceData, meta interface
 }
 
 func resourceAwsOpsworksApplicationUpdate(d *schema.ResourceData, meta interface{}) error {
-	return nil
+	client := meta.(*AWSClient).opsworksconn
+	req := &opsworks.UpdateAppInput{
+		Name: aws.String(d.Get("name").(string)),
+		Type: aws.String(d.Get("type").(string)),
+	}
+
+	log.Printf("[DEBUG] Updating OpsWorks layer: %s", d.Id())
+
+	_, err := client.UpdateApp(req)
+	if err != nil {
+		return err
+	}
+
+	return resourceAwsOpsworksApplicationRead(d, meta)
 }
 
 func resourceAwsOpsworksApplicationDelete(d *schema.ResourceData, meta interface{}) error {
-	return nil
+	client := meta.(*AWSClient).opsworksconn
+
+	req := &opsworks.DeleteAppInput{
+		AppId: aws.String(d.Id()),
+	}
+
+	log.Printf("[DEBUG] Deleting OpsWorks application: %s", d.Id())
+
+	_, err := client.DeleteApp(req)
+	return err
 }
