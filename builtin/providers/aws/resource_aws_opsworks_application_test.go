@@ -23,18 +23,23 @@ func TestAccAWSOpsworksApplication(t *testing.T) {
 					resource.TestCheckResourceAttr(
 						"aws_opsworks_application.tf-acc", "name", "tf-ops-acc-application",
 					),
+					resource.TestCheckResourceAttr(
+						"aws_opsworks_application.tf-acc", "type", "other",
+					),
 				),
 			},
-			/*
-				resource.TestStep{
-					Config: testAccAwsOpsworksCustomLayerConfigUpdate,
-					Check: resource.ComposeTestCheckFunc(
-						resource.TestCheckResourceAttr(
-							"aws_opsworks_custom_layer.tf-acc", "name", "tf-ops-acc-application",
-						),
+
+			resource.TestStep{
+				Config: testAccAwsOpsworksApplicationUpdate,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(
+						"aws_opsworks_application.tf-acc", "name", "tf-ops-acc-application",
 					),
-				},
-			*/
+					resource.TestCheckResourceAttr(
+						"aws_opsworks_application.tf-acc", "type", "static",
+					),
+				),
+			},
 		},
 	})
 }
@@ -47,10 +52,17 @@ func testAccCheckAwsOpsworksApplicationDestroy(s *terraform.State) error {
 	return nil
 }
 
-var testAccAwsOpsworksApplicationCreate = testAccAwsOpsworksStackConfigNoVpcCreate + `
+var testAccAwsOpsworksApplicationCreate = testAccAwsOpsworksStackConfigVpcCreate + `
 resource "aws_opsworks_application" "tf-acc" {
   stack_id = "${aws_opsworks_stack.tf-acc.id}"
   name = "tf-ops-acc-application"
   type = "other"
+}
+`
+var testAccAwsOpsworksApplicationUpdate = testAccAwsOpsworksStackConfigVpcCreate + `
+resource "aws_opsworks_application" "tf-acc" {
+  stack_id = "${aws_opsworks_stack.tf-acc.id}"
+  name = "tf-ops-acc-application"
+  type = "static"
 }
 `

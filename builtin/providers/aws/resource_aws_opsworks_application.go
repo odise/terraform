@@ -42,6 +42,7 @@ func resourceAwsOpsworksApplication() *schema.Resource {
 				Type:     schema.TypeString,
 				Required: true,
 			},
+			// aws-flow-ruby | java | rails | php | nodejs | static | other
 			"type": &schema.Schema{
 				Type:     schema.TypeString,
 				Required: true,
@@ -88,7 +89,134 @@ func resourceAwsOpsworksApplication() *schema.Resource {
 					},
 				},
 			},
+			"data_source": &schema.Schema{
+				Type:     schema.TypeList,
+				Optional: true,
+				Computed: true,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						// AutoSelectOpsworksMysqlInstance, OpsworksMysqlInstance, or RdsDbInstance.
+						"type": &schema.Schema{
+							Type:     schema.TypeString,
+							Optional: true,
+						},
+						"database_name": &schema.Schema{
+							Type:     schema.TypeString,
+							Optional: true,
+						},
+						"arn": &schema.Schema{
+							Type:     schema.TypeString,
+							Optional: true,
+						},
+					},
+				},
+			},
+			"description": &schema.Schema{
+				Type:     schema.TypeString,
+				Optional: true,
+			},
+			"domains": &schema.Schema{
+				Type:     schema.TypeList,
+				Optional: true,
+				Elem:     &schema.Schema{Type: schema.TypeString},
+			},
+			"enable_ssl": &schema.Schema{
+				Type:     schema.TypeBool,
+				Optional: true,
+				Default:  true,
+			},
+			"environment": &schema.Schema{
+				Type:     schema.TypeSet,
+				Optional: true,
+				//Computed: true,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"key": &schema.Schema{
+							Type:     schema.TypeString,
+							Required: true,
+						},
+						"value": &schema.Schema{
+							Type:     schema.TypeString,
+							Required: true,
+						},
+						"secure": &schema.Schema{
+							Type:     schema.TypeBool,
+							Optional: true,
+							Default:  true,
+						},
+					},
+				},
+			},
+			"ssl_configuration": &schema.Schema{
+				Type:     schema.TypeList,
+				Optional: true,
+				Computed: true,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"certificate": &schema.Schema{
+							Type:     schema.TypeString,
+							Required: true,
+						},
+						"private_key": &schema.Schema{
+							Type:     schema.TypeString,
+							Required: true,
+						},
+						"chain": &schema.Schema{
+							Type:     schema.TypeString,
+							Optional: true,
+						},
+					},
+				},
+			},
 		},
+	}
+}
+
+func resourceAwsOpsworksApplicationAppSource(d *schema.ResourceData) *opsworks.Source {
+	count := d.Get("app_source.#").(int)
+	if count == 0 {
+		return nil
+	}
+
+	return &opsworks.Source{
+		Type:     aws.String(d.Get("app_source.0.type").(string)),
+		Url:      aws.String(d.Get("app_source.0.url").(string)),
+		Username: aws.String(d.Get("app_source.0.username").(string)),
+		Password: aws.String(d.Get("app_source.0.password").(string)),
+		Revision: aws.String(d.Get("app_source.0.revision").(string)),
+		SshKey:   aws.String(d.Get("app_source.0.ssh_key").(string)),
+	}
+}
+
+func resourceAwsOpsworksSetApplicationAppSource(d *schema.ResourceData, v *opsworks.Source) {
+	nv := make([]interface{}, 0, 1)
+	if v != nil {
+		m := make(map[string]interface{})
+		if v.Type != nil {
+			m["type"] = *v.Type
+		}
+		if v.Url != nil {
+			m["url"] = *v.Url
+		}
+		if v.Username != nil {
+			m["username"] = *v.Username
+		}
+		if v.Password != nil {
+			m["password"] = *v.Password
+		}
+		if v.Revision != nil {
+			m["revision"] = *v.Revision
+		}
+		if v.SshKey != nil {
+			m["ssh_key"] = *v.SshKey
+		}
+		nv = append(nv, m)
+	}
+
+	err := d.Set("app_source", nv)
+	if err != nil {
+		// should never happen
+		panic(err)
 	}
 }
 
@@ -120,7 +248,11 @@ func resourceAwsOpsworksApplicationRead(d *schema.ResourceData, meta interface{}
 	d.Set("name", app.Name)
 	d.Set("stack_id", app.StackId)
 	d.Set("type", app.Type)
-
+	d.Set("description", app.Description)
+	d.Set("domains", app.Domains)
+	d.Set("enable_ssl", app.EnableSsl)
+	resourceAwsOpsworksSetApplicationAppSource(d, app.AppSource)
+	setEnvironmentVariable(d, app.Environment)
 	return nil
 }
 
@@ -130,9 +262,14 @@ func resourceAwsOpsworksApplicationCreate(d *schema.ResourceData, meta interface
 	// XXX: validate
 
 	req := &opsworks.CreateAppInput{
-		Name:    aws.String(d.Get("name").(string)),
-		StackId: aws.String(d.Get("stack_id").(string)),
-		Type:    aws.String(d.Get("type").(string)),
+		Name:        aws.String(d.Get("name").(string)),
+		StackId:     aws.String(d.Get("stack_id").(string)),
+		Type:        aws.String(d.Get("type").(string)),
+		Description: aws.String(d.Get("description").(string)),
+		Domains:     makeAwsStringList(d.Get("domains").([]interface{})),
+		EnableSsl:   aws.Bool(d.Get("enable_ssl").(bool)),
+		AppSource:   resourceAwsOpsworksApplicationAppSource(d),
+		Environment: environmentVariable(d),
 	}
 
 	var resp *opsworks.CreateAppOutput
@@ -165,8 +302,14 @@ func resourceAwsOpsworksApplicationCreate(d *schema.ResourceData, meta interface
 func resourceAwsOpsworksApplicationUpdate(d *schema.ResourceData, meta interface{}) error {
 	client := meta.(*AWSClient).opsworksconn
 	req := &opsworks.UpdateAppInput{
-		Name: aws.String(d.Get("name").(string)),
-		Type: aws.String(d.Get("type").(string)),
+		AppId:       aws.String(d.Id()),
+		Name:        aws.String(d.Get("name").(string)),
+		Type:        aws.String(d.Get("type").(string)),
+		Description: aws.String(d.Get("description").(string)),
+		Domains:     makeAwsStringList(d.Get("domains").([]interface{})),
+		EnableSsl:   aws.Bool(d.Get("enable_ssl").(bool)),
+		AppSource:   resourceAwsOpsworksApplicationAppSource(d),
+		Environment: environmentVariable(d),
 	}
 
 	log.Printf("[DEBUG] Updating OpsWorks layer: %s", d.Id())
@@ -190,4 +333,49 @@ func resourceAwsOpsworksApplicationDelete(d *schema.ResourceData, meta interface
 
 	_, err := client.DeleteApp(req)
 	return err
+}
+
+func setEnvironmentVariable(d *schema.ResourceData, v []*opsworks.EnvironmentVariable) {
+	log.Printf("[DEBUG] envs: %s %d", v, len(v))
+	newValue := make([]*map[string]interface{}, len(v))
+
+	for i := 0; i < len(v); i++ {
+		config := v[i]
+		data := make(map[string]interface{})
+		newValue[i] = &data
+
+		if config.Key != nil {
+			data["key"] = *config.Key
+		}
+		if config.Value != nil {
+			data["value"] = *config.Value
+		}
+		if config.Secure != nil {
+
+			if bool(*config.Secure) {
+				data["secure"] = &opsworksTrueString
+			} else {
+				data["secure"] = &opsworksFalseString
+			}
+		}
+		log.Printf("[DEBUG] v: %s", data)
+	}
+
+	d.Set("environment", newValue)
+}
+
+func environmentVariable(d *schema.ResourceData) []*opsworks.EnvironmentVariable {
+	environmentVariables := d.Get("environment").(*schema.Set).List()
+	result := make([]*opsworks.EnvironmentVariable, len(environmentVariables))
+
+	for i := 0; i < len(environmentVariables); i++ {
+		env := environmentVariables[i].(map[string]interface{})
+
+		result[i] = &opsworks.EnvironmentVariable{
+			Key:    aws.String(env["key"].(string)),
+			Value:  aws.String(env["value"].(string)),
+			Secure: aws.Bool(env["secure"].(bool)),
+		}
+	}
+	return result
 }
