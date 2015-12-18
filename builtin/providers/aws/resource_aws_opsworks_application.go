@@ -7,8 +7,8 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/opsworks"
+	"github.com/hashicorp/terraform/helper/resource"
 	"github.com/hashicorp/terraform/helper/schema"
-	"github.com/odise/terraform/helper/resource"
 )
 
 type opsworksApplicationTypeAttribute struct {
@@ -64,7 +64,7 @@ func resourceAwsOpsworksApplication() *schema.Resource {
 
 						"url": &schema.Schema{
 							Type:     schema.TypeString,
-							Required: true,
+							Optional: true,
 						},
 
 						"username": &schema.Schema{
@@ -90,9 +90,8 @@ func resourceAwsOpsworksApplication() *schema.Resource {
 				},
 			},
 			"data_source": &schema.Schema{
-				Type:     schema.TypeList,
+				Type:     schema.TypeSet,
 				Optional: true,
-				Computed: true,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						// AutoSelectOpsworksMysqlInstance, OpsworksMysqlInstance, or RdsDbInstance.
@@ -150,7 +149,6 @@ func resourceAwsOpsworksApplication() *schema.Resource {
 			"ssl_configuration": &schema.Schema{
 				Type:     schema.TypeList,
 				Optional: true,
-				Computed: true,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"certificate": &schema.Schema{
@@ -170,6 +168,183 @@ func resourceAwsOpsworksApplication() *schema.Resource {
 			},
 		},
 	}
+}
+
+func resourceAwsOpsworksApplicationRead(d *schema.ResourceData, meta interface{}) error {
+	client := meta.(*AWSClient).opsworksconn
+
+	req := &opsworks.DescribeAppsInput{
+		AppIds: []*string{
+			aws.String(d.Id()),
+		},
+	}
+
+	log.Printf("[DEBUG] Reading OpsWorks app: %s", d.Id())
+
+	resp, err := client.DescribeApps(req)
+	if err != nil {
+		if awserr, ok := err.(awserr.Error); ok {
+			if awserr.Code() == "ResourceNotFoundException" {
+				log.Printf("[INFO] App not found: %s", d.Id())
+				d.SetId("")
+				return nil
+			}
+		}
+		return err
+	}
+
+	app := resp.Apps[0]
+
+	d.Set("name", app.Name)
+	d.Set("stack_id", app.StackId)
+	d.Set("type", app.Type)
+	d.Set("description", app.Description)
+	d.Set("domains", app.Domains)
+	d.Set("enable_ssl", app.EnableSsl)
+	resourceAwsOpsworksSetApplicationAppSource(d, app.AppSource)
+	resourceAwsOpsworksSetApplicationEnvironmentVariable(d, app.Environment)
+	resourceAwsOpsworksSetApplicationDataSources(d, app.DataSources)
+	return nil
+}
+
+func resourceAwsOpsworksApplicationCreate(d *schema.ResourceData, meta interface{}) error {
+	client := meta.(*AWSClient).opsworksconn
+
+	// XXX: validate
+
+	req := &opsworks.CreateAppInput{
+		Name:        aws.String(d.Get("name").(string)),
+		StackId:     aws.String(d.Get("stack_id").(string)),
+		Type:        aws.String(d.Get("type").(string)),
+		Description: aws.String(d.Get("description").(string)),
+		Domains:     makeAwsStringList(d.Get("domains").([]interface{})),
+		EnableSsl:   aws.Bool(d.Get("enable_ssl").(bool)),
+		AppSource:   resourceAwsOpsworksApplicationAppSource(d),
+		Environment: resourceAwsOpsworksApplicationEnvironmentVariable(d),
+		DataSources: resourceAwsOpsworksApplicationDataSources(d),
+	}
+
+	var resp *opsworks.CreateAppOutput
+	err := resource.Retry(10*time.Minute, func() error {
+		var cerr error
+		resp, cerr = client.CreateApp(req)
+		if cerr != nil {
+			log.Printf("[INFO] client error")
+			if opserr, ok := cerr.(awserr.Error); ok {
+				// XXX: handle errors
+				log.Printf("[INFO] OpsWorks error: " + opserr.Code() + "message: " + opserr.Message())
+				return cerr
+			}
+			return resource.RetryError{Err: cerr}
+		}
+		return nil
+	})
+
+	if err != nil {
+		return err
+	}
+
+	appID := *resp.AppId
+	d.SetId(appID)
+	d.Set("id", appID)
+
+	return resourceAwsOpsworksApplicationRead(d, meta)
+}
+
+func resourceAwsOpsworksApplicationUpdate(d *schema.ResourceData, meta interface{}) error {
+	client := meta.(*AWSClient).opsworksconn
+	req := &opsworks.UpdateAppInput{
+		AppId:       aws.String(d.Id()),
+		Name:        aws.String(d.Get("name").(string)),
+		Type:        aws.String(d.Get("type").(string)),
+		Description: aws.String(d.Get("description").(string)),
+		Domains:     makeAwsStringList(d.Get("domains").([]interface{})),
+		EnableSsl:   aws.Bool(d.Get("enable_ssl").(bool)),
+		AppSource:   resourceAwsOpsworksApplicationAppSource(d),
+		Environment: resourceAwsOpsworksApplicationEnvironmentVariable(d),
+		DataSources: resourceAwsOpsworksApplicationDataSources(d),
+	}
+
+	log.Printf("[DEBUG] Updating OpsWorks layer: %s", d.Id())
+
+	var resp *opsworks.UpdateAppOutput
+	err := resource.Retry(10*time.Minute, func() error {
+		var cerr error
+		resp, cerr = client.UpdateApp(req)
+		if cerr != nil {
+			log.Printf("[INFO] client error")
+			if opserr, ok := cerr.(awserr.Error); ok {
+				// XXX: handle errors
+				log.Printf("[INFO] OpsWorks error: " + opserr.Code() + "message: " + opserr.Message())
+				return cerr
+			}
+			return resource.RetryError{Err: cerr}
+		}
+		return nil
+	})
+
+	if err != nil {
+		return err
+	}
+	return resourceAwsOpsworksApplicationRead(d, meta)
+}
+
+func resourceAwsOpsworksApplicationDelete(d *schema.ResourceData, meta interface{}) error {
+	client := meta.(*AWSClient).opsworksconn
+
+	req := &opsworks.DeleteAppInput{
+		AppId: aws.String(d.Id()),
+	}
+
+	log.Printf("[DEBUG] Deleting OpsWorks application: %s", d.Id())
+
+	_, err := client.DeleteApp(req)
+	return err
+}
+
+func resourceAwsOpsworksSetApplicationEnvironmentVariable(d *schema.ResourceData, v []*opsworks.EnvironmentVariable) {
+	log.Printf("[DEBUG] envs: %s %d", v, len(v))
+	newValue := make([]*map[string]interface{}, len(v))
+
+	for i := 0; i < len(v); i++ {
+		config := v[i]
+		data := make(map[string]interface{})
+		newValue[i] = &data
+
+		if config.Key != nil {
+			data["key"] = *config.Key
+		}
+		if config.Value != nil {
+			data["value"] = *config.Value
+		}
+		if config.Secure != nil {
+
+			if bool(*config.Secure) {
+				data["secure"] = &opsworksTrueString
+			} else {
+				data["secure"] = &opsworksFalseString
+			}
+		}
+		log.Printf("[DEBUG] v: %s", data)
+	}
+
+	d.Set("environment", newValue)
+}
+
+func resourceAwsOpsworksApplicationEnvironmentVariable(d *schema.ResourceData) []*opsworks.EnvironmentVariable {
+	environmentVariables := d.Get("environment").(*schema.Set).List()
+	result := make([]*opsworks.EnvironmentVariable, len(environmentVariables))
+
+	for i := 0; i < len(environmentVariables); i++ {
+		env := environmentVariables[i].(map[string]interface{})
+
+		result[i] = &opsworks.EnvironmentVariable{
+			Key:    aws.String(env["key"].(string)),
+			Value:  aws.String(env["value"].(string)),
+			Secure: aws.Bool(env["secure"].(bool)),
+		}
+	}
+	return result
 }
 
 func resourceAwsOpsworksApplicationAppSource(d *schema.ResourceData) *opsworks.Source {
@@ -220,123 +395,24 @@ func resourceAwsOpsworksSetApplicationAppSource(d *schema.ResourceData, v *opswo
 	}
 }
 
-func resourceAwsOpsworksApplicationRead(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(*AWSClient).opsworksconn
+func resourceAwsOpsworksApplicationDataSources(d *schema.ResourceData) []*opsworks.DataSource {
+	dataSources := d.Get("data_source").(*schema.Set).List()
+	result := make([]*opsworks.DataSource, len(dataSources))
 
-	req := &opsworks.DescribeAppsInput{
-		AppIds: []*string{
-			aws.String(d.Id()),
-		},
-	}
+	for i := 0; i < len(dataSources); i++ {
+		src := dataSources[i].(map[string]interface{})
 
-	log.Printf("[DEBUG] Reading OpsWorks app: %s", d.Id())
-
-	resp, err := client.DescribeApps(req)
-	if err != nil {
-		if awserr, ok := err.(awserr.Error); ok {
-			if awserr.Code() == "ResourceNotFoundException" {
-				log.Printf("[INFO] App not found: %s", d.Id())
-				d.SetId("")
-				return nil
-			}
+		result[i] = &opsworks.DataSource{
+			Arn:          aws.String(src["arn"].(string)),
+			DatabaseName: aws.String(src["database_name"].(string)),
+			Type:         aws.String(src["type"].(string)),
 		}
-		return err
 	}
-
-	app := resp.Apps[0]
-
-	d.Set("name", app.Name)
-	d.Set("stack_id", app.StackId)
-	d.Set("type", app.Type)
-	d.Set("description", app.Description)
-	d.Set("domains", app.Domains)
-	d.Set("enable_ssl", app.EnableSsl)
-	resourceAwsOpsworksSetApplicationAppSource(d, app.AppSource)
-	setEnvironmentVariable(d, app.Environment)
-	return nil
+	return result
 }
 
-func resourceAwsOpsworksApplicationCreate(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(*AWSClient).opsworksconn
-
-	// XXX: validate
-
-	req := &opsworks.CreateAppInput{
-		Name:        aws.String(d.Get("name").(string)),
-		StackId:     aws.String(d.Get("stack_id").(string)),
-		Type:        aws.String(d.Get("type").(string)),
-		Description: aws.String(d.Get("description").(string)),
-		Domains:     makeAwsStringList(d.Get("domains").([]interface{})),
-		EnableSsl:   aws.Bool(d.Get("enable_ssl").(bool)),
-		AppSource:   resourceAwsOpsworksApplicationAppSource(d),
-		Environment: environmentVariable(d),
-	}
-
-	var resp *opsworks.CreateAppOutput
-	err := resource.Retry(20*time.Minute, func() error {
-		var cerr error
-		resp, cerr = client.CreateApp(req)
-		if cerr != nil {
-			log.Printf("[INFO] client error")
-			if opserr, ok := cerr.(awserr.Error); ok {
-				// XXX: handle errors
-				log.Printf("[INFO] OpsWorks error: " + opserr.Code() + "message: " + opserr.Message())
-				return cerr
-			}
-			return resource.RetryError{Err: cerr}
-		}
-		return nil
-	})
-
-	if err != nil {
-		return err
-	}
-
-	appID := *resp.AppId
-	d.SetId(appID)
-	d.Set("id", appID)
-
-	return resourceAwsOpsworksApplicationRead(d, meta)
-}
-
-func resourceAwsOpsworksApplicationUpdate(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(*AWSClient).opsworksconn
-	req := &opsworks.UpdateAppInput{
-		AppId:       aws.String(d.Id()),
-		Name:        aws.String(d.Get("name").(string)),
-		Type:        aws.String(d.Get("type").(string)),
-		Description: aws.String(d.Get("description").(string)),
-		Domains:     makeAwsStringList(d.Get("domains").([]interface{})),
-		EnableSsl:   aws.Bool(d.Get("enable_ssl").(bool)),
-		AppSource:   resourceAwsOpsworksApplicationAppSource(d),
-		Environment: environmentVariable(d),
-	}
-
-	log.Printf("[DEBUG] Updating OpsWorks layer: %s", d.Id())
-
-	_, err := client.UpdateApp(req)
-	if err != nil {
-		return err
-	}
-
-	return resourceAwsOpsworksApplicationRead(d, meta)
-}
-
-func resourceAwsOpsworksApplicationDelete(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(*AWSClient).opsworksconn
-
-	req := &opsworks.DeleteAppInput{
-		AppId: aws.String(d.Id()),
-	}
-
-	log.Printf("[DEBUG] Deleting OpsWorks application: %s", d.Id())
-
-	_, err := client.DeleteApp(req)
-	return err
-}
-
-func setEnvironmentVariable(d *schema.ResourceData, v []*opsworks.EnvironmentVariable) {
-	log.Printf("[DEBUG] envs: %s %d", v, len(v))
+func resourceAwsOpsworksSetApplicationDataSources(d *schema.ResourceData, v []*opsworks.DataSource) {
+	log.Printf("[DEBUG] data sources: %s %d", v, len(v))
 	newValue := make([]*map[string]interface{}, len(v))
 
 	for i := 0; i < len(v); i++ {
@@ -344,38 +420,18 @@ func setEnvironmentVariable(d *schema.ResourceData, v []*opsworks.EnvironmentVar
 		data := make(map[string]interface{})
 		newValue[i] = &data
 
-		if config.Key != nil {
-			data["key"] = *config.Key
+		if config.Type != nil {
+			data["type"] = *config.Type
 		}
-		if config.Value != nil {
-			data["value"] = *config.Value
+		if config.DatabaseName != nil {
+			data["database_name"] = *config.DatabaseName
 		}
-		if config.Secure != nil {
-
-			if bool(*config.Secure) {
-				data["secure"] = &opsworksTrueString
-			} else {
-				data["secure"] = &opsworksFalseString
-			}
+		if config.Arn != nil {
+			data["arn"] = *config.Arn
 		}
 		log.Printf("[DEBUG] v: %s", data)
 	}
 
-	d.Set("environment", newValue)
-}
-
-func environmentVariable(d *schema.ResourceData) []*opsworks.EnvironmentVariable {
-	environmentVariables := d.Get("environment").(*schema.Set).List()
-	result := make([]*opsworks.EnvironmentVariable, len(environmentVariables))
-
-	for i := 0; i < len(environmentVariables); i++ {
-		env := environmentVariables[i].(map[string]interface{})
-
-		result[i] = &opsworks.EnvironmentVariable{
-			Key:    aws.String(env["key"].(string)),
-			Value:  aws.String(env["value"].(string)),
-			Secure: aws.Bool(env["secure"].(bool)),
-		}
-	}
-	return result
+	log.Printf("[DEBUG] d: %s", d.Get("data_source"))
+	d.Set("data_source", newValue)
 }
