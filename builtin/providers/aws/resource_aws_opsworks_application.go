@@ -3,6 +3,7 @@ package aws
 import (
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -91,7 +92,7 @@ func resourceAwsOpsworksApplication() *schema.Resource {
 				},
 			},
 			"data_source": &schema.Schema{
-				Type:     schema.TypeSet,
+				Type:     schema.TypeList,
 				Optional: true,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
@@ -120,11 +121,6 @@ func resourceAwsOpsworksApplication() *schema.Resource {
 				Optional: true,
 				Elem:     &schema.Schema{Type: schema.TypeString},
 			},
-			"enable_ssl": &schema.Schema{
-				Type:     schema.TypeBool,
-				Optional: true,
-				Default:  true,
-			},
 			"environment": &schema.Schema{
 				Type:     schema.TypeSet,
 				Optional: true,
@@ -147,25 +143,22 @@ func resourceAwsOpsworksApplication() *schema.Resource {
 					},
 				},
 			},
-			"ssl_configuration": &schema.Schema{
-				Type:     schema.TypeList,
+			"enable_ssl": &schema.Schema{
+				Type:     schema.TypeBool,
 				Optional: true,
-				Elem: &schema.Resource{
-					Schema: map[string]*schema.Schema{
-						"certificate": &schema.Schema{
-							Type:     schema.TypeString,
-							Required: true,
-						},
-						"private_key": &schema.Schema{
-							Type:     schema.TypeString,
-							Required: true,
-						},
-						"chain": &schema.Schema{
-							Type:     schema.TypeString,
-							Optional: true,
-						},
-					},
-				},
+				Default:  true,
+			},
+			"ssl_certificate": &schema.Schema{
+				Type:     schema.TypeString,
+				Optional: true,
+			},
+			"ssl_private_key": &schema.Schema{
+				Type:     schema.TypeString,
+				Optional: true,
+			},
+			"ssl_chain": &schema.Schema{
+				Type:     schema.TypeString,
+				Optional: true,
 			},
 		},
 	}
@@ -175,6 +168,11 @@ func resourceAwsOpsworksApplicationValidate(d *schema.ResourceData) error {
 	dataSourceCount := d.Get("data_source.#").(int)
 	if dataSourceCount > 1 {
 		return fmt.Errorf("Only one data_source is permitted")
+	}
+	sslKey := d.Get("ssl_private_key").(string)
+	sslCert := d.Get("ssl_certificate").(string)
+	if (len(sslKey) + len(sslCert)) < 2 {
+		return fmt.Errorf("ssl_private_key and ssl_certivicate must be set")
 	}
 
 	return nil
@@ -209,9 +207,11 @@ func resourceAwsOpsworksApplicationRead(d *schema.ResourceData, meta interface{}
 	d.Set("stack_id", app.StackId)
 	d.Set("type", app.Type)
 	d.Set("description", app.Description)
-	d.Set("domains", app.Domains)
-	d.Set("enable_ssl", app.EnableSsl)
 	d.Set("domains", unwrapAwsStringList(app.Domains))
+	d.Set("enable_ssl", app.EnableSsl)
+	d.Set("ssl_private_key", app.SslConfiguration.PrivateKey)
+	d.Set("ssl_certificate", app.SslConfiguration.Certificate)
+	d.Set("ssl_chain", app.SslConfiguration.Chain)
 	resourceAwsOpsworksSetApplicationAppSource(d, app.AppSource)
 	resourceAwsOpsworksSetApplicationEnvironmentVariable(d, app.Environment)
 	resourceAwsOpsworksSetApplicationDataSources(d, app.DataSources)
@@ -233,6 +233,11 @@ func resourceAwsOpsworksApplicationCreate(d *schema.ResourceData, meta interface
 		Description: aws.String(d.Get("description").(string)),
 		Domains:     makeAwsStringList(d.Get("domains").([]interface{})),
 		EnableSsl:   aws.Bool(d.Get("enable_ssl").(bool)),
+		SslConfiguration: &opsworks.SslConfiguration{
+			Certificate: aws.String(strings.TrimRight(d.Get("ssl_certificate").(string), "\n")),
+			PrivateKey:  aws.String(strings.TrimRight(d.Get("ssl_private_key").(string), "\n")),
+			Chain:       aws.String(strings.TrimRight(d.Get("ssl_chain").(string), "\n")),
+		},
 		AppSource:   resourceAwsOpsworksApplicationAppSource(d),
 		Environment: resourceAwsOpsworksApplicationEnvironmentVariable(d),
 		DataSources: resourceAwsOpsworksApplicationDataSources(d),
@@ -274,6 +279,11 @@ func resourceAwsOpsworksApplicationUpdate(d *schema.ResourceData, meta interface
 		Description: aws.String(d.Get("description").(string)),
 		Domains:     makeAwsStringList(d.Get("domains").([]interface{})),
 		EnableSsl:   aws.Bool(d.Get("enable_ssl").(bool)),
+		SslConfiguration: &opsworks.SslConfiguration{
+			Certificate: aws.String(strings.TrimRight(d.Get("ssl_certificate").(string), "\n")),
+			PrivateKey:  aws.String(strings.TrimRight(d.Get("ssl_private_key").(string), "\n")), // Required
+			Chain:       aws.String(strings.TrimRight(d.Get("ssl_chain").(string), "\n")),
+		},
 		AppSource:   resourceAwsOpsworksApplicationAppSource(d),
 		Environment: resourceAwsOpsworksApplicationEnvironmentVariable(d),
 		DataSources: resourceAwsOpsworksApplicationDataSources(d),
@@ -410,18 +420,18 @@ func resourceAwsOpsworksSetApplicationAppSource(d *schema.ResourceData, v *opswo
 }
 
 func resourceAwsOpsworksApplicationDataSources(d *schema.ResourceData) []*opsworks.DataSource {
-	dataSources := d.Get("data_source").(*schema.Set).List()
-	result := make([]*opsworks.DataSource, len(dataSources))
-
-	for i := 0; i < len(dataSources); i++ {
-		src := dataSources[i].(map[string]interface{})
-
-		result[i] = &opsworks.DataSource{
-			Arn:          aws.String(src["arn"].(string)),
-			DatabaseName: aws.String(src["database_name"].(string)),
-			Type:         aws.String(src["type"].(string)),
-		}
+	count := d.Get("data_source.#").(int)
+	if count == 0 {
+		return nil
 	}
+	result := make([]*opsworks.DataSource, 1)
+
+	result[0] = &opsworks.DataSource{
+		Arn:          aws.String(d.Get("data_source.0.arn").(string)),
+		DatabaseName: aws.String(d.Get("data_source.0.database_name").(string)),
+		Type:         aws.String(d.Get("data_source.0.type").(string)),
+	}
+	log.Printf("[DEBUG] data sources: %d %s %d", count, result, len(result))
 	return result
 }
 
