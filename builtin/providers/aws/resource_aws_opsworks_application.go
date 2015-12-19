@@ -1,6 +1,7 @@
 package aws
 
 import (
+	"fmt"
 	"log"
 	"time"
 
@@ -170,6 +171,15 @@ func resourceAwsOpsworksApplication() *schema.Resource {
 	}
 }
 
+func resourceAwsOpsworksApplicationValidate(d *schema.ResourceData) error {
+	dataSourceCount := d.Get("data_source.#").(int)
+	if dataSourceCount > 1 {
+		return fmt.Errorf("Only one data_source is permitted")
+	}
+
+	return nil
+}
+
 func resourceAwsOpsworksApplicationRead(d *schema.ResourceData, meta interface{}) error {
 	client := meta.(*AWSClient).opsworksconn
 
@@ -201,6 +211,7 @@ func resourceAwsOpsworksApplicationRead(d *schema.ResourceData, meta interface{}
 	d.Set("description", app.Description)
 	d.Set("domains", app.Domains)
 	d.Set("enable_ssl", app.EnableSsl)
+	d.Set("domains", unwrapAwsStringList(app.Domains))
 	resourceAwsOpsworksSetApplicationAppSource(d, app.AppSource)
 	resourceAwsOpsworksSetApplicationEnvironmentVariable(d, app.Environment)
 	resourceAwsOpsworksSetApplicationDataSources(d, app.DataSources)
@@ -210,7 +221,10 @@ func resourceAwsOpsworksApplicationRead(d *schema.ResourceData, meta interface{}
 func resourceAwsOpsworksApplicationCreate(d *schema.ResourceData, meta interface{}) error {
 	client := meta.(*AWSClient).opsworksconn
 
-	// XXX: validate
+	err := resourceAwsOpsworksApplicationValidate(d)
+	if err != nil {
+		return err
+	}
 
 	req := &opsworks.CreateAppInput{
 		Name:        aws.String(d.Get("name").(string)),
@@ -225,7 +239,7 @@ func resourceAwsOpsworksApplicationCreate(d *schema.ResourceData, meta interface
 	}
 
 	var resp *opsworks.CreateAppOutput
-	err := resource.Retry(10*time.Minute, func() error {
+	err = resource.Retry(10*time.Minute, func() error {
 		var cerr error
 		resp, cerr = client.CreateApp(req)
 		if cerr != nil {
