@@ -81,21 +81,30 @@ resource "aws_iam_role_policy" "service-role-policy" {
     role = "${aws_iam_role.service-role.id}"
     policy = <<EOF
 {
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Resource":"*",
-      "Action": [
-        "cloudwatch:GetMetricStatistics",
-        "ec2:*",
-        "opsworks:*",
-        "elasticloadbalancing:*",
-        "iam:PassRole",
-        "rds:*"
-      ],
-      "Effect": "Allow"
-    }
-  ]
+    "Version": "2012-10-17",
+    "Statement": [{
+        "Effect": "Allow",
+        "Action": [
+            "cloudwatch:GetMetricStatistics",
+             "ec2:DescribeAccountAttributes",
+             "ec2:DescribeAvailabilityZones",
+             "ec2:DescribeInstances",
+             "ec2:DescribeKeyPairs",
+             "ec2:DescribeSecurityGroups",
+             "ec2:DescribeSubnets",
+             "ec2:DescribeVpcs",
+             "elasticloadbalancing:DescribeInstanceHealth",
+             "elasticloadbalancing:DescribeLoadBalancers",
+             "iam:GetRolePolicy",
+             "iam:ListInstanceProfiles",
+             "iam:ListRoles",
+             "iam:ListUsers",
+             "iam:PassRole",
+             "opsworks:*",
+             "rds:*"
+        ],
+        "Resource": ["*"]
+    }]
 }
 EOF
 }
@@ -154,10 +163,35 @@ resource "aws_opsworks_stack" "tf-acc" {
   depends_on = [ "aws_iam_role.service-role", "aws_iam_role_policy.service-role-policy", "aws_iam_instance_profile.opsworks-instance-profile" ]
   name = "tf-opsworks-acc"
   region = "eu-west-1"
-  service_role_arn = "${aws_iam_role.service-role.arn}"
+  #service_role_arn = "${aws_iam_role.service-role.arn}"
+  service_role_arn = "arn:aws:iam::301581146302:role/opsworks_service_role"
   default_instance_profile_arn = "${aws_iam_instance_profile.opsworks-instance-profile.arn}"
   default_availability_zone = "eu-west-1a"
-  use_opsworks_security_groups = true
+}
+output "vpc_id" {
+  value = "${aws_opsworks_stack.tf-acc.vpc_id}"
+}
+output "default_subnet_id" {
+  value = "${aws_opsworks_stack.tf-acc.default_subnet_id}"
+}
+`
+var testAccAwsOpsworksApplicationBasicsUpdate = `
+resource "aws_opsworks_stack" "tf-acc" {
+  depends_on = [ "aws_iam_role.service-role", "aws_iam_role_policy.service-role-policy", "aws_iam_instance_profile.opsworks-instance-profile" ]
+  name = "tf-opsworks-acc"
+  region = "eu-west-1"
+  #service_role_arn = "${aws_iam_role.service-role.arn}"
+  service_role_arn = "arn:aws:iam::301581146302:role/opsworks_service_role"
+  default_instance_profile_arn = "${aws_iam_instance_profile.opsworks-instance-profile.arn}"
+  default_availability_zone = "eu-west-1a"
+  default_subnet_id = "{$aws_opsworks_stack.tf-acc.default_subnet_id}"
+	vpc_id = "${aws_opsworks_stack.tf-acc.vpc_id}"
+}
+output "vpc_id" {
+  value = "${aws_opsworks_stack.tf-acc.vpc_id}"
+}
+output "default_subnet_id" {
+  value = "${aws_opsworks_stack.tf-acc.default_subnet_id}"
 }
 `
 
@@ -166,12 +200,14 @@ resource "aws_opsworks_application" "tf-acc" {
   stack_id = "${aws_opsworks_stack.tf-acc.id}"
   name = "tf-ops-acc-application"
   type = "other"
+  enable_ssl = false
 }
 `
-var testAccAwsOpsworksApplicationUpdate = testAccAwsOpsworksApplicationIam + testAccAwsOpsworksApplicationBasics + `
+var testAccAwsOpsworksApplicationUpdate = testAccAwsOpsworksApplicationIam + testAccAwsOpsworksApplicationBasicsUpdate + `
 resource "aws_opsworks_application" "tf-acc" {
   stack_id = "${aws_opsworks_stack.tf-acc.id}"
   name = "tf-ops-acc-application"
   type = "static"
+  enable_ssl = false
 }
 `

@@ -125,7 +125,7 @@ func resourceAwsOpsworksApplication() *schema.Resource {
 			"enable_ssl": &schema.Schema{
 				Type:     schema.TypeBool,
 				Optional: true,
-				Default:  true,
+				Default:  false,
 			},
 			"ssl_configuration": &schema.Schema{
 				Type:     schema.TypeList,
