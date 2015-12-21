@@ -13,21 +13,6 @@ import (
 	"github.com/hashicorp/terraform/helper/schema"
 )
 
-type opsworksApplicationTypeAttribute struct {
-	AttrName  string
-	Type      schema.ValueType
-	Default   interface{}
-	Required  bool
-	WriteOnly bool
-}
-
-type opsworksApplicationType struct {
-	TypeName         string
-	DefaultLayerName string
-	Attributes       map[string]*opsworksApplicationTypeAttribute
-	CustomShortName  bool
-}
-
 func resourceAwsOpsworksApplication() *schema.Resource {
 	return &schema.Resource{
 
@@ -53,34 +38,43 @@ func resourceAwsOpsworksApplication() *schema.Resource {
 				Type:     schema.TypeString,
 				Required: true,
 			},
-			"app_source_type": &schema.Schema{
-				Type:     schema.TypeString,
+			"app_source": &schema.Schema{
+				Type:     schema.TypeList,
 				Optional: true,
-			},
+				Computed: true,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"type": &schema.Schema{
+							Type:     schema.TypeString,
+							Required: true,
+						},
 
-			"app_source_url": &schema.Schema{
-				Type:     schema.TypeString,
-				Optional: true,
-			},
+						"url": &schema.Schema{
+							Type:     schema.TypeString,
+							Optional: true,
+						},
 
-			"app_source_username": &schema.Schema{
-				Type:     schema.TypeString,
-				Optional: true,
-			},
+						"username": &schema.Schema{
+							Type:     schema.TypeString,
+							Optional: true,
+						},
 
-			"app_source_password": &schema.Schema{
-				Type:     schema.TypeString,
-				Optional: true,
-			},
+						"password": &schema.Schema{
+							Type:     schema.TypeString,
+							Optional: true,
+						},
 
-			"app_source_revision": &schema.Schema{
-				Type:     schema.TypeString,
-				Optional: true,
-			},
+						"revision": &schema.Schema{
+							Type:     schema.TypeString,
+							Optional: true,
+						},
 
-			"app_source_ssh_key": &schema.Schema{
-				Type:     schema.TypeString,
-				Optional: true,
+						"ssh_key": &schema.Schema{
+							Type:     schema.TypeString,
+							Optional: true,
+						},
+					},
+				},
 			},
 			// AutoSelectOpsworksMysqlInstance, OpsworksMysqlInstance, or RdsDbInstance.
 			// anything beside auto select will lead into failure in case the instance doen't existence
@@ -174,6 +168,11 @@ func resourceAwsOpsworksApplication() *schema.Resource {
 }
 
 func resourceAwsOpsworksApplicationValidate(d *schema.ResourceData) error {
+	appSourceCount := d.Get("app_source.#").(int)
+	if appSourceCount > 1 {
+		return fmt.Errorf("Only one app_source is permitted")
+	}
+
 	sslKey := d.Get("ssl_private_key").(string)
 	sslCert := d.Get("ssl_certificate").(string)
 	if (len(sslKey) > 0 || len(sslCert) > 0) && (len(sslKey)+len(sslCert) < 2) {
@@ -223,6 +222,7 @@ func resourceAwsOpsworksApplicationRead(d *schema.ResourceData, meta interface{}
 	d.Set("app_source_password", app.AppSource.Password)
 	d.Set("app_source_revision", app.AppSource.Revision)
 	d.Set("app_source_ssh_key", app.AppSource.SshKey)
+	resourceAwsOpsworksSetApplicationSource(d, app.AppSource)
 	resourceAwsOpsworksSetApplicationDataSources(d, app.DataSources)
 	resourceAwsOpsworksSetApplicationEnvironmentVariable(d, app.Environment)
 	return nil
@@ -248,14 +248,7 @@ func resourceAwsOpsworksApplicationCreate(d *schema.ResourceData, meta interface
 			PrivateKey:  aws.String(d.Get("ssl_private_key").(string)),
 			Chain:       aws.String(d.Get("ssl_chain").(string)),
 		},
-		AppSource: &opsworks.Source{
-			Type:     aws.String(d.Get("app_source_type").(string)),
-			Url:      aws.String(d.Get("app_source_url").(string)),
-			Username: aws.String(d.Get("app_source_username").(string)),
-			Password: aws.String(d.Get("app_source_password").(string)),
-			Revision: aws.String(d.Get("app_source_revision").(string)),
-			SshKey:   aws.String(d.Get("app_source_ssh_key").(string)),
-		},
+		AppSource:   resourceAwsOpsworksApplicationSource(d),
 		DataSources: resourceAwsOpsworksApplicationDataSources(d),
 		Environment: resourceAwsOpsworksApplicationEnvironmentVariable(d),
 	}
@@ -302,14 +295,7 @@ func resourceAwsOpsworksApplicationUpdate(d *schema.ResourceData, meta interface
 			PrivateKey:  aws.String(d.Get("ssl_private_key").(string)),
 			Chain:       aws.String(d.Get("ssl_chain").(string)),
 		},
-		AppSource: &opsworks.Source{
-			Type:     aws.String(d.Get("app_source_type").(string)),
-			Url:      aws.String(d.Get("app_source_url").(string)),
-			Username: aws.String(d.Get("app_source_username").(string)),
-			Password: aws.String(d.Get("app_source_password").(string)),
-			Revision: aws.String(d.Get("app_source_revision").(string)),
-			SshKey:   aws.String(d.Get("app_source_ssh_key").(string)),
-		},
+		AppSource:   resourceAwsOpsworksApplicationSource(d),
 		DataSources: resourceAwsOpsworksApplicationDataSources(d),
 		Environment: resourceAwsOpsworksApplicationEnvironmentVariable(d),
 	}
@@ -398,6 +384,54 @@ func resourceAwsOpsworksApplicationEnvironmentVariable(d *schema.ResourceData) [
 		}
 	}
 	return result
+}
+
+func resourceAwsOpsworksApplicationSource(d *schema.ResourceData) *opsworks.Source {
+	count := d.Get("app_source.#").(int)
+	if count == 0 {
+		return nil
+	}
+
+	return &opsworks.Source{
+		Type:     aws.String(d.Get("app_source.0.type").(string)),
+		Url:      aws.String(d.Get("app_source.0.url").(string)),
+		Username: aws.String(d.Get("app_source.0.username").(string)),
+		Password: aws.String(d.Get("app_source.0.password").(string)),
+		Revision: aws.String(d.Get("app_source.0.revision").(string)),
+		SshKey:   aws.String(d.Get("app_source.0.ssh_key").(string)),
+	}
+}
+
+func resourceAwsOpsworksSetApplicationSource(d *schema.ResourceData, v *opsworks.Source) {
+	nv := make([]interface{}, 0, 1)
+	if v != nil {
+		m := make(map[string]interface{})
+		if v.Type != nil {
+			m["type"] = *v.Type
+		}
+		if v.Url != nil {
+			m["url"] = *v.Url
+		}
+		if v.Username != nil {
+			m["username"] = *v.Username
+		}
+		if v.Password != nil {
+			m["password"] = *v.Password
+		}
+		if v.Revision != nil {
+			m["revision"] = *v.Revision
+		}
+		if v.SshKey != nil {
+			m["ssh_key"] = *v.SshKey
+		}
+		nv = append(nv, m)
+	}
+
+	err := d.Set("app_source", nv)
+	if err != nil {
+		// should never happen
+		panic(err)
+	}
 }
 
 func resourceAwsOpsworksApplicationDataSources(d *schema.ResourceData) []*opsworks.DataSource {
