@@ -127,40 +127,49 @@ func resourceAwsOpsworksApplication() *schema.Resource {
 				Optional: true,
 				Default:  true,
 			},
-			"ssl_certificate": &schema.Schema{
-				Type:     schema.TypeString,
+			"ssl_configuration": &schema.Schema{
+				Type:     schema.TypeList,
 				Optional: true,
-				StateFunc: func(v interface{}) string {
-					switch v.(type) {
-					case string:
-						return strings.TrimSpace(v.(string))
-					default:
-						return ""
-					}
-				},
-			},
-			"ssl_private_key": &schema.Schema{
-				Type:     schema.TypeString,
-				Optional: true,
-				StateFunc: func(v interface{}) string {
-					switch v.(type) {
-					case string:
-						return strings.TrimSpace(v.(string))
-					default:
-						return ""
-					}
-				},
-			},
-			"ssl_chain": &schema.Schema{
-				Type:     schema.TypeString,
-				Optional: true,
-				StateFunc: func(v interface{}) string {
-					switch v.(type) {
-					case string:
-						return strings.TrimSpace(v.(string))
-					default:
-						return ""
-					}
+				//Computed: true,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"certificate": &schema.Schema{
+							Type:     schema.TypeString,
+							Required: true,
+							StateFunc: func(v interface{}) string {
+								switch v.(type) {
+								case string:
+									return strings.TrimSpace(v.(string))
+								default:
+									return ""
+								}
+							},
+						},
+						"private_key": &schema.Schema{
+							Type:     schema.TypeString,
+							Required: true,
+							StateFunc: func(v interface{}) string {
+								switch v.(type) {
+								case string:
+									return strings.TrimSpace(v.(string))
+								default:
+									return ""
+								}
+							},
+						},
+						"chain": &schema.Schema{
+							Type:     schema.TypeString,
+							Optional: true,
+							StateFunc: func(v interface{}) string {
+								switch v.(type) {
+								case string:
+									return strings.TrimSpace(v.(string))
+								default:
+									return ""
+								}
+							},
+						},
+					},
 				},
 			},
 		},
@@ -173,10 +182,9 @@ func resourceAwsOpsworksApplicationValidate(d *schema.ResourceData) error {
 		return fmt.Errorf("Only one app_source is permitted")
 	}
 
-	sslKey := d.Get("ssl_private_key").(string)
-	sslCert := d.Get("ssl_certificate").(string)
-	if (len(sslKey) > 0 || len(sslCert) > 0) && (len(sslKey)+len(sslCert) < 2) {
-		return fmt.Errorf("ssl_private_key and ssl_certivicate must be set")
+	sslCount := d.Get("ssl_configuration.#").(int)
+	if sslCount > 1 {
+		return fmt.Errorf("Only one ssl_configuration is permitted")
 	}
 
 	return nil
@@ -213,15 +221,7 @@ func resourceAwsOpsworksApplicationRead(d *schema.ResourceData, meta interface{}
 	d.Set("description", app.Description)
 	d.Set("domains", unwrapAwsStringList(app.Domains))
 	d.Set("enable_ssl", app.EnableSsl)
-	d.Set("ssl_private_key", app.SslConfiguration.PrivateKey)
-	d.Set("ssl_certificate", app.SslConfiguration.Certificate)
-	d.Set("ssl_chain", app.SslConfiguration.Chain)
-	d.Set("app_source_type", app.AppSource.Type)
-	d.Set("app_source_url", app.AppSource.Url)
-	d.Set("app_source_username", app.AppSource.Username)
-	d.Set("app_source_password", app.AppSource.Password)
-	d.Set("app_source_revision", app.AppSource.Revision)
-	d.Set("app_source_ssh_key", app.AppSource.SshKey)
+	resourceAwsOpsworksSetApplicationSsl(d, app.SslConfiguration)
 	resourceAwsOpsworksSetApplicationSource(d, app.AppSource)
 	resourceAwsOpsworksSetApplicationDataSources(d, app.DataSources)
 	resourceAwsOpsworksSetApplicationEnvironmentVariable(d, app.Environment)
@@ -237,20 +237,16 @@ func resourceAwsOpsworksApplicationCreate(d *schema.ResourceData, meta interface
 	}
 
 	req := &opsworks.CreateAppInput{
-		Name:        aws.String(d.Get("name").(string)),
-		StackId:     aws.String(d.Get("stack_id").(string)),
-		Type:        aws.String(d.Get("type").(string)),
-		Description: aws.String(d.Get("description").(string)),
-		Domains:     makeAwsStringList(d.Get("domains").([]interface{})),
-		EnableSsl:   aws.Bool(d.Get("enable_ssl").(bool)),
-		SslConfiguration: &opsworks.SslConfiguration{
-			Certificate: aws.String(d.Get("ssl_certificate").(string)),
-			PrivateKey:  aws.String(d.Get("ssl_private_key").(string)),
-			Chain:       aws.String(d.Get("ssl_chain").(string)),
-		},
-		AppSource:   resourceAwsOpsworksApplicationSource(d),
-		DataSources: resourceAwsOpsworksApplicationDataSources(d),
-		Environment: resourceAwsOpsworksApplicationEnvironmentVariable(d),
+		Name:             aws.String(d.Get("name").(string)),
+		StackId:          aws.String(d.Get("stack_id").(string)),
+		Type:             aws.String(d.Get("type").(string)),
+		Description:      aws.String(d.Get("description").(string)),
+		Domains:          makeAwsStringList(d.Get("domains").([]interface{})),
+		EnableSsl:        aws.Bool(d.Get("enable_ssl").(bool)),
+		SslConfiguration: resourceAwsOpsworksApplicationSsl(d),
+		AppSource:        resourceAwsOpsworksApplicationSource(d),
+		DataSources:      resourceAwsOpsworksApplicationDataSources(d),
+		Environment:      resourceAwsOpsworksApplicationEnvironmentVariable(d),
 	}
 
 	var resp *opsworks.CreateAppOutput
@@ -284,20 +280,16 @@ func resourceAwsOpsworksApplicationUpdate(d *schema.ResourceData, meta interface
 	client := meta.(*AWSClient).opsworksconn
 
 	req := &opsworks.UpdateAppInput{
-		AppId:       aws.String(d.Id()),
-		Name:        aws.String(d.Get("name").(string)),
-		Type:        aws.String(d.Get("type").(string)),
-		Description: aws.String(d.Get("description").(string)),
-		Domains:     makeAwsStringList(d.Get("domains").([]interface{})),
-		EnableSsl:   aws.Bool(d.Get("enable_ssl").(bool)),
-		SslConfiguration: &opsworks.SslConfiguration{
-			Certificate: aws.String(d.Get("ssl_certificate").(string)),
-			PrivateKey:  aws.String(d.Get("ssl_private_key").(string)),
-			Chain:       aws.String(d.Get("ssl_chain").(string)),
-		},
-		AppSource:   resourceAwsOpsworksApplicationSource(d),
-		DataSources: resourceAwsOpsworksApplicationDataSources(d),
-		Environment: resourceAwsOpsworksApplicationEnvironmentVariable(d),
+		AppId:            aws.String(d.Id()),
+		Name:             aws.String(d.Get("name").(string)),
+		Type:             aws.String(d.Get("type").(string)),
+		Description:      aws.String(d.Get("description").(string)),
+		Domains:          makeAwsStringList(d.Get("domains").([]interface{})),
+		EnableSsl:        aws.Bool(d.Get("enable_ssl").(bool)),
+		SslConfiguration: resourceAwsOpsworksApplicationSsl(d),
+		AppSource:        resourceAwsOpsworksApplicationSource(d),
+		DataSources:      resourceAwsOpsworksApplicationDataSources(d),
+		Environment:      resourceAwsOpsworksApplicationEnvironmentVariable(d),
 	}
 
 	log.Printf("[DEBUG] Updating OpsWorks layer: %s", d.Id())
@@ -463,4 +455,46 @@ func resourceAwsOpsworksSetApplicationDataSources(d *schema.ResourceData, v []*o
 	d.Set("data_source_arn", v[0].Arn)
 	d.Set("data_source_database_name)", v[0].DatabaseName)
 	d.Set("data_source_type)", v[0].Type)
+}
+
+func resourceAwsOpsworksApplicationSsl(d *schema.ResourceData) *opsworks.SslConfiguration {
+	count := d.Get("ssl_configuration.#").(int)
+	if count == 0 {
+		return nil
+	}
+
+	return &opsworks.SslConfiguration{
+		PrivateKey:  aws.String(d.Get("ssl_configuration.0.private_key").(string)),
+		Certificate: aws.String(d.Get("ssl_configuration.0.certificate").(string)),
+		Chain:       aws.String(d.Get("ssl_configuration.0.chain").(string)),
+	}
+}
+
+func resourceAwsOpsworksSetApplicationSsl(d *schema.ResourceData, v *opsworks.SslConfiguration) {
+	nv := make([]interface{}, 0, 1)
+	set := false
+	if v != nil {
+		m := make(map[string]interface{})
+		if v.PrivateKey != nil {
+			m["private_key"] = *v.PrivateKey
+			set = true
+		}
+		if v.Certificate != nil {
+			m["certificate"] = *v.Certificate
+			set = true
+		}
+		if v.Chain != nil {
+			m["chain"] = *v.Chain
+			set = true
+		}
+		if set {
+			nv = append(nv, m)
+		}
+	}
+
+	err := d.Set("ssl_configuration", nv)
+	if err != nil {
+		// should never happen
+		panic(err)
+	}
 }
