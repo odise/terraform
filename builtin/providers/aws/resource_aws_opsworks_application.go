@@ -38,6 +38,26 @@ func resourceAwsOpsworksApplication() *schema.Resource {
 				Type:     schema.TypeString,
 				Required: true,
 			},
+			// TODO: the following 4 vals are really part of the Attributes array. We should validate that only ones relevant to the chosen type are set, perhaps. (what is the default type? how do they map?)
+			"document_root": &schema.Schema{
+				Type:     schema.TypeString,
+				Optional: true,
+				//Default:  "public",
+			},
+			"rails_env": &schema.Schema{
+				Type:     schema.TypeString,
+				Optional: true,
+				//Default:  "production",
+			},
+			"auto_bundle_on_deploy": &schema.Schema{
+				Type:     schema.TypeString,
+				Optional: true,
+				//Default:  true,
+			},
+			"aws_flow_ruby_settings": &schema.Schema{
+				Type:     schema.TypeString,
+				Optional: true,
+			},
 			"app_source": &schema.Schema{
 				Type:     schema.TypeList,
 				Optional: true,
@@ -179,12 +199,18 @@ func resourceAwsOpsworksApplication() *schema.Resource {
 func resourceAwsOpsworksApplicationValidate(d *schema.ResourceData) error {
 	appSourceCount := d.Get("app_source.#").(int)
 	if appSourceCount > 1 {
-		return fmt.Errorf("Only one app_source is permitted")
+		return fmt.Errorf("Only one app_source is permitted.")
 	}
 
 	sslCount := d.Get("ssl_configuration.#").(int)
 	if sslCount > 1 {
-		return fmt.Errorf("Only one ssl_configuration is permitted")
+		return fmt.Errorf("Only one ssl_configuration is permitted.")
+	}
+
+	if d.Get("type").(string) == opsworks.AppTypeRails {
+		if _, ok := d.GetOk("rails_env"); !ok {
+			return fmt.Errorf("Set rails_env imust be set if type is set to rails.")
+		}
 	}
 
 	return nil
@@ -225,6 +251,7 @@ func resourceAwsOpsworksApplicationRead(d *schema.ResourceData, meta interface{}
 	resourceAwsOpsworksSetApplicationSource(d, app.AppSource)
 	resourceAwsOpsworksSetApplicationDataSources(d, app.DataSources)
 	resourceAwsOpsworksSetApplicationEnvironmentVariable(d, app.Environment)
+	resourceAwsOpsworksSetApplicationAttributes(d, app.Attributes)
 	return nil
 }
 
@@ -247,6 +274,7 @@ func resourceAwsOpsworksApplicationCreate(d *schema.ResourceData, meta interface
 		AppSource:        resourceAwsOpsworksApplicationSource(d),
 		DataSources:      resourceAwsOpsworksApplicationDataSources(d),
 		Environment:      resourceAwsOpsworksApplicationEnvironmentVariable(d),
+		Attributes:       resourceAwsOpsworksApplicationAttributes(d),
 	}
 
 	var resp *opsworks.CreateAppOutput
@@ -290,6 +318,7 @@ func resourceAwsOpsworksApplicationUpdate(d *schema.ResourceData, meta interface
 		AppSource:        resourceAwsOpsworksApplicationSource(d),
 		DataSources:      resourceAwsOpsworksApplicationDataSources(d),
 		Environment:      resourceAwsOpsworksApplicationEnvironmentVariable(d),
+		Attributes:       resourceAwsOpsworksApplicationAttributes(d),
 	}
 
 	log.Printf("[DEBUG] Updating OpsWorks layer: %s", d.Id())
@@ -445,16 +474,16 @@ func resourceAwsOpsworksApplicationDataSources(d *schema.ResourceData) []*opswor
 
 func resourceAwsOpsworksSetApplicationDataSources(d *schema.ResourceData, v []*opsworks.DataSource) {
 	d.Set("data_source_arn", nil)
-	d.Set("data_source_database_name)", nil)
-	d.Set("data_source_type)", nil)
+	d.Set("data_source_database_name", nil)
+	d.Set("data_source_type", nil)
 
 	if len(v) == 0 {
 		return
 	}
 
 	d.Set("data_source_arn", v[0].Arn)
-	d.Set("data_source_database_name)", v[0].DatabaseName)
-	d.Set("data_source_type)", v[0].Type)
+	d.Set("data_source_database_name", v[0].DatabaseName)
+	d.Set("data_source_type", v[0].Type)
 }
 
 func resourceAwsOpsworksApplicationSsl(d *schema.ResourceData) *opsworks.SslConfiguration {
@@ -496,5 +525,57 @@ func resourceAwsOpsworksSetApplicationSsl(d *schema.ResourceData, v *opsworks.Ss
 	if err != nil {
 		// should never happen
 		panic(err)
+	}
+}
+
+func resourceAwsOpsworksApplicationAttributes(d *schema.ResourceData) map[string]*string {
+	if d.Get("type") != opsworks.AppTypeRails {
+		return nil
+	}
+	attributes := make(map[string]*string)
+
+	if val := d.Get("document_root").(string); len(val) > 0 {
+		attributes[opsworks.AppAttributesKeysDocumentRoot] = aws.String(val)
+	}
+	if val := d.Get("aws_flow_ruby_settings").(string); len(val) > 0 {
+		attributes[opsworks.AppAttributesKeysAwsFlowRubySettings] = aws.String(val)
+	}
+	if val := d.Get("rails_env").(string); len(val) > 0 {
+		attributes[opsworks.AppAttributesKeysRailsEnv] = aws.String(val)
+	}
+	if val := d.Get("auto_bundle_on_deploy").(string); len(val) > 0 {
+		if val == "1" {
+			val = "true"
+		} else if val == "0" {
+			val = "false"
+		}
+		attributes[opsworks.AppAttributesKeysAutoBundleOnDeploy] = aws.String(val)
+	}
+
+	log.Printf("[DEBUG] XXX bool: %s", d.Get("auto_bundle_on_deploy").(string))
+	return attributes
+}
+
+func resourceAwsOpsworksSetApplicationAttributes(d *schema.ResourceData, v map[string]*string) {
+	d.Set("document_root", nil)
+	d.Set("rails_env", nil)
+	d.Set("aws_flow_ruby_settings", nil)
+	d.Set("auto_bundle_on_deploy", nil)
+
+	if d.Get("type") != opsworks.AppTypeRails {
+		return
+	}
+	if val, ok := v[opsworks.AppAttributesKeysDocumentRoot]; ok {
+		d.Set("document_root", val)
+	}
+	if val, ok := v[opsworks.AppAttributesKeysAwsFlowRubySettings]; ok {
+		d.Set("aws_flow_ruby_settings", val)
+	}
+	if val, ok := v[opsworks.AppAttributesKeysRailsEnv]; ok {
+		d.Set("rails_env", val)
+	}
+	if val, ok := v[opsworks.AppAttributesKeysAutoBundleOnDeploy]; ok {
+		log.Printf("[DEBUG] XXX read bool: %s", *val)
+		d.Set("auto_bundle_on_deploy", val)
 	}
 }
