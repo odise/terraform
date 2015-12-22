@@ -102,7 +102,7 @@ func resourceAwsOpsworksApplication() *schema.Resource {
 				},
 			},
 			// AutoSelectOpsworksMysqlInstance, OpsworksMysqlInstance, or RdsDbInstance.
-			// anything beside auto select will lead into failure in case the instance doen't existence
+			// anything beside auto select will lead into failure in case the instance doesn't exist
 			// XXX: validation?
 			"data_source_type": &schema.Schema{
 				Type:     schema.TypeString,
@@ -128,7 +128,6 @@ func resourceAwsOpsworksApplication() *schema.Resource {
 			"environment": &schema.Schema{
 				Type:     schema.TypeSet,
 				Optional: true,
-				//Computed: true,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"key": &schema.Schema{
@@ -214,8 +213,27 @@ func resourceAwsOpsworksApplicationValidate(d *schema.ResourceData) error {
 
 	if d.Get("type").(string) == opsworks.AppTypeRails {
 		if _, ok := d.GetOk("rails_env"); !ok {
-			return fmt.Errorf("Set rails_env imust be set if type is set to rails.")
+			return fmt.Errorf("Set rails_env must be set if type is set to rails.")
 		}
+	}
+	switch d.Get("type").(string) {
+	case opsworks.AppTypeStatic:
+	case opsworks.AppTypeRails:
+	case opsworks.AppTypePhp:
+	case opsworks.AppTypeOther:
+	case opsworks.AppTypeNodejs:
+	case opsworks.AppTypeJava:
+	case opsworks.AppTypeAwsFlowRuby:
+		log.Printf("[DEBUG] type supported")
+	default:
+		return fmt.Errorf("opsworks_application.type must be one of %s, %s, %s, %s, %s, %s, %s",
+			opsworks.AppTypeStatic,
+			opsworks.AppTypeRails,
+			opsworks.AppTypePhp,
+			opsworks.AppTypeOther,
+			opsworks.AppTypeNodejs,
+			opsworks.AppTypeJava,
+			opsworks.AppTypeAwsFlowRuby)
 	}
 
 	return nil
