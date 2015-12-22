@@ -44,7 +44,7 @@ func TestAccAWSOpsworksApplication(t *testing.T) {
 						"aws_opsworks_application.tf-acc", "name", "tf-ops-acc-application",
 					),
 					resource.TestCheckResourceAttr(
-						"aws_opsworks_application.tf-acc", "type", "static",
+						"aws_opsworks_application.tf-acc", "type", "rails",
 					),
 					resource.TestCheckResourceAttr(
 						"aws_opsworks_application.tf-acc", "enable_ssl", "true",
@@ -79,6 +79,15 @@ func TestAccAWSOpsworksApplication(t *testing.T) {
 					resource.TestCheckResourceAttr(
 						"aws_opsworks_application.tf-acc", "app_source.0.username", "",
 					),
+					resource.TestCheckResourceAttr(
+						"aws_opsworks_application.tf-acc", "document_root", "root",
+					),
+					resource.TestCheckResourceAttr(
+						"aws_opsworks_application.tf-acc", "auto_bundle_on_deploy ", "true",
+					),
+					resource.TestCheckResourceAttr(
+						"aws_opsworks_application.tf-acc", "rails_env", "staging",
+					),
 				),
 			},
 		},
@@ -109,7 +118,7 @@ var testAccAwsOpsworksApplicationUpdate = testAccAwsOpsworksStackConfigNoVpcCrea
 resource "aws_opsworks_application" "tf-acc" {
   stack_id = "${aws_opsworks_stack.tf-acc.id}"
   name = "tf-ops-acc-application"
-  type = "static"
+  type = "rails"
   domains = ["example.com", "sub.example.com"]
   enable_ssl = true
   ssl_configuration = {
@@ -149,5 +158,8 @@ EOS
     revision = "master"
     url = "https://github.com/aws/example.git"
   }
+	document_root = "root"
+  auto_bundle_on_deploy = "true"
+  rails_env = "staging"
 }
 `
