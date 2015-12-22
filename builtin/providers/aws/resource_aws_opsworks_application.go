@@ -29,6 +29,11 @@ func resourceAwsOpsworksApplication() *schema.Resource {
 				Type:     schema.TypeString,
 				Required: true,
 			},
+			"short_name": &schema.Schema{
+				Type:     schema.TypeString,
+				Computed: true,
+				Optional: true,
+			},
 			// aws-flow-ruby | java | rails | php | nodejs | static | other
 			"type": &schema.Schema{
 				Type:     schema.TypeString,
@@ -265,6 +270,7 @@ func resourceAwsOpsworksApplicationCreate(d *schema.ResourceData, meta interface
 
 	req := &opsworks.CreateAppInput{
 		Name:             aws.String(d.Get("name").(string)),
+		Shortname:        aws.String(d.Get("short_name").(string)),
 		StackId:          aws.String(d.Get("stack_id").(string)),
 		Type:             aws.String(d.Get("type").(string)),
 		Description:      aws.String(d.Get("description").(string)),
@@ -278,14 +284,14 @@ func resourceAwsOpsworksApplicationCreate(d *schema.ResourceData, meta interface
 	}
 
 	var resp *opsworks.CreateAppOutput
-	err = resource.Retry(10*time.Minute, func() error {
+	err = resource.Retry(2*time.Minute, func() error {
 		var cerr error
 		resp, cerr = client.CreateApp(req)
 		if cerr != nil {
 			log.Printf("[INFO] client error")
 			if opserr, ok := cerr.(awserr.Error); ok {
 				// XXX: handle errors
-				log.Printf("[INFO] OpsWorks error: " + opserr.Code() + "message: " + opserr.Message())
+				log.Printf("[ERROR] OpsWorks error: %s message: %s", opserr.Code(), opserr.Message())
 				return cerr
 			}
 			return resource.RetryError{Err: cerr}
@@ -324,14 +330,14 @@ func resourceAwsOpsworksApplicationUpdate(d *schema.ResourceData, meta interface
 	log.Printf("[DEBUG] Updating OpsWorks layer: %s", d.Id())
 
 	var resp *opsworks.UpdateAppOutput
-	err := resource.Retry(10*time.Minute, func() error {
+	err := resource.Retry(2*time.Minute, func() error {
 		var cerr error
 		resp, cerr = client.UpdateApp(req)
 		if cerr != nil {
 			log.Printf("[INFO] client error")
 			if opserr, ok := cerr.(awserr.Error); ok {
 				// XXX: handle errors
-				log.Printf("[INFO] OpsWorks error: " + opserr.Code() + "message: " + opserr.Message())
+				log.Printf("[ERROR] OpsWorks error: %s message: %s", opserr.Code(), opserr.Message())
 				return cerr
 			}
 			return resource.RetryError{Err: cerr}
@@ -552,7 +558,6 @@ func resourceAwsOpsworksApplicationAttributes(d *schema.ResourceData) map[string
 		attributes[opsworks.AppAttributesKeysAutoBundleOnDeploy] = aws.String(val)
 	}
 
-	log.Printf("[DEBUG] XXX bool: %s", d.Get("auto_bundle_on_deploy").(string))
 	return attributes
 }
 
@@ -575,7 +580,6 @@ func resourceAwsOpsworksSetApplicationAttributes(d *schema.ResourceData, v map[s
 		d.Set("rails_env", val)
 	}
 	if val, ok := v[opsworks.AppAttributesKeysAutoBundleOnDeploy]; ok {
-		log.Printf("[DEBUG] XXX read bool: %s", *val)
 		d.Set("auto_bundle_on_deploy", val)
 	}
 }
