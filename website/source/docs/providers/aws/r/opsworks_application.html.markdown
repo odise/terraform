@@ -81,7 +81,7 @@ An `environment` block supports the following arguments:
 * `value` - (Required) Variable value.
 * `secret` - (Optional) Set visibility of the variable value to `true` or `false`.
 
-An `ssl_configuration` block supports the following arguments (can only be defined once per resource):
+A `ssl_configuration` block supports the following arguments (can only be defined once per resource):
 
 * `private_key` - (Required) The private key; the contents of the certificate's domain.key file.
 * `certificate` - (Required) The contents of the certificate's domain.crt file.
