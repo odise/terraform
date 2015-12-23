@@ -2,6 +2,7 @@ package aws
 
 import (
 	"fmt"
+	"log"
 	"testing"
 
 	"github.com/hashicorp/terraform/helper/resource"
@@ -34,6 +35,15 @@ func TestAccAWSOpsworksApplication(t *testing.T) {
 					),
 					resource.TestCheckResourceAttr(
 						"aws_opsworks_application.tf-acc", "app_source", "",
+					),
+					resource.TestCheckResourceAttr(
+						"aws_opsworks_application.tf-acc", "environment.3077298702.key", "key1",
+					),
+					resource.TestCheckResourceAttr(
+						"aws_opsworks_application.tf-acc", "environment.3077298702.value", "value1",
+					),
+					resource.TestCheckResourceAttr(
+						"aws_opsworks_application.tf-acc", "environment.3077298702.secret", "",
 					),
 				),
 			},
@@ -80,10 +90,28 @@ func TestAccAWSOpsworksApplication(t *testing.T) {
 						"aws_opsworks_application.tf-acc", "app_source.0.username", "",
 					),
 					resource.TestCheckResourceAttr(
+						"aws_opsworks_application.tf-acc", "environment.2107898637.key", "key2",
+					),
+					resource.TestCheckResourceAttr(
+						"aws_opsworks_application.tf-acc", "environment.2107898637.value", "value2",
+					),
+					resource.TestCheckResourceAttr(
+						"aws_opsworks_application.tf-acc", "environment.2107898637.secure", "true",
+					),
+					resource.TestCheckResourceAttr(
+						"aws_opsworks_application.tf-acc", "environment.3077298702.key", "key1",
+					),
+					resource.TestCheckResourceAttr(
+						"aws_opsworks_application.tf-acc", "environment.3077298702.value", "value1",
+					),
+					resource.TestCheckResourceAttr(
+						"aws_opsworks_application.tf-acc", "environment.3077298702.secret", "",
+					),
+					resource.TestCheckResourceAttr(
 						"aws_opsworks_application.tf-acc", "document_root", "root",
 					),
 					resource.TestCheckResourceAttr(
-						"aws_opsworks_application.tf-acc", "auto_bundle_on_deploy ", "true",
+						"aws_opsworks_application.tf-acc", "auto_bundle_on_deploy", "true",
 					),
 					resource.TestCheckResourceAttr(
 						"aws_opsworks_application.tf-acc", "rails_env", "staging",
@@ -98,7 +126,14 @@ func testAccCheckAwsOpsworksApplicationDestroy(s *terraform.State) error {
 	if len(s.RootModule().Resources) > 0 {
 		return fmt.Errorf("Expected all resources to be gone, but found: %#v", s.RootModule().Resources)
 	}
+	for _, rs := range s.RootModule().Resources {
+		if rs.Type != "aws_opsworks_application" {
+			log.Printf("[INFO] Destroying dangling resource: %s", rs.String())
+			continue
+		}
 
+		log.Printf("[INFO] Destroying OpsWorks application dangling resource: %s", rs.String())
+	}
 	return nil
 }
 
@@ -111,6 +146,7 @@ resource "aws_opsworks_application" "tf-acc" {
   app_source ={
     type = "other"
   }
+	environment = { key = "key1" value = "value1" secure = false}
 }
 `
 
@@ -158,6 +194,8 @@ EOS
     revision = "master"
     url = "https://github.com/aws/example.git"
   }
+	environment = { key = "key1" value = "value1" secure = false}
+	environment = { key = "key2" value = "value2" }
 	document_root = "root"
   auto_bundle_on_deploy = "true"
   rails_env = "staging"
