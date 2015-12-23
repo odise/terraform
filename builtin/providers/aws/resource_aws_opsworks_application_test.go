@@ -2,7 +2,6 @@ package aws
 
 import (
 	"fmt"
-	"log"
 	"testing"
 
 	"github.com/hashicorp/terraform/helper/resource"
@@ -126,14 +125,7 @@ func testAccCheckAwsOpsworksApplicationDestroy(s *terraform.State) error {
 	if len(s.RootModule().Resources) > 0 {
 		return fmt.Errorf("Expected all resources to be gone, but found: %#v", s.RootModule().Resources)
 	}
-	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "aws_opsworks_application" {
-			log.Printf("[INFO] Destroying dangling resource: %s", rs.String())
-			continue
-		}
 
-		log.Printf("[INFO] Destroying OpsWorks application dangling resource: %s", rs.String())
-	}
 	return nil
 }
 
