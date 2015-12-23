@@ -87,7 +87,6 @@ A `ssl_configuration` block supports the following arguments (can only be define
 * `certificate` - (Required) The contents of the certificate's domain.crt file.
 * `chain` - (Optional)  Can be used to specify an intermediate certificate authority key or client authentication.
 
-
 ## Attributes Reference
 
 The following attributes are exported:
