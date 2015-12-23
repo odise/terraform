@@ -9,17 +9,11 @@ install: make updatedeps
 
 script:
   - make test
+  - make dev
 
 branches:
   only:
     - travis
-
-notifications:
-  irc:
-    channels:
-      - "irc.freenode.org#terraform-tool"
-    skip_join: true
-    use_notice: true
 
 matrix:
   fast_finish: true
