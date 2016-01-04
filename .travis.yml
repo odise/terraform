@@ -5,7 +5,9 @@ language: go
 go:
   - 1.5
 
-install: make updatedeps
+install: 
+  - ln -s $HOME/gopath/src/github.com/odise/terraform $HOME/gopath/src/github.com/hashicorp/terraform
+  - make updatedeps
 
 script:
   - make test
