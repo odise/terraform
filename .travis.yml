@@ -1,5 +1,4 @@
 sudo: false
-
 language: go
 
 go:
@@ -12,14 +11,19 @@ install:
 
 script:
   - make test
-  - make dev
-  - make testacc TEST=./builtin/providers/aws TESTARGS='-run=OpsworksApplication'
+  - make plugin-dev PLUGIN=provider-aws
+  - TF_LOG=DEBUG make testacc TEST=./builtin/providers/aws TESTARGS='-run=OpsworksApplication'
+  - XC_ARCH="amd64" XC_OS="linux darwin" make bin
 
 branches:
   only:
     - travis
-
 matrix:
   fast_finish: true
   allow_failures:
     - go: tip
+
+env:
+  global:
+  - secure: N6ZRHZW3MFc6v2/vZ6Eo9za+UVHv49ROZnolD36UFQY67wkGLQpJAKo9NS/TlMmBYtfxtXje9+HAep8QBkGE/ZqznvQftI+5B0REmImWWNrYgTtBM1pjms8mu++wTgGuEwOmOT2zDliY/l0BnYy5bSUBLID1PVasbYg2aejV8A4lIprKyNlgQJasUAMGwQpvV4oGOP244doS2fTQ+bnl1l0sfYF92emOiOZynipjwNPkCF8GlnvtBHn99LlY6wTd/fhp7QlzbMlF4N9bZKGAQG+GTQUjchoK7jvE4idbGq+SrqGty6YZ5Eu2O+i4Qj1yM5D1X8YVD+uOU3bQigJzw9XoHtdrawz1TsOF8KvdrAr54L3yP1iHt9unzJzju2RhNEqyVIHnNXPi05R0buIaRUuX6snquZreoSH0Hvdr5qk47+0tngWY/f0cseztpOjiOSOcnqkVET/u7SnDg2o25XnNzQCUeQfa+ROKmL3N6usYfBPx/fSX95qV6/svt36mPpzHwpBV7qVVliMM+73DKQr3nD2EBp/yjz8BAj0wnKUuJVFTgpqCP3/6HFUcOk6/YMWGETfTXmeWLJAzZhYUrcMAZbGNjBF5vlgWSrWmiNBMKp5QL65Kz+ckSrWbcrJat2x8LlMuU51QfbEI2Xx8Il+L6Zg9De/VHdLYm7+YnOI=
+  - secure: I1qI9WBMZ1oMKkP/gQ9fiQX+jQg7xroE7xkuT1OGSYplj7S9nu2ChxO2Kxk1NvDjRS7F50HSnEOSVMsJ2cB6psvb8Uk/CyblDwliUjYGOAZ6o+H/yss24Tnv4A17nAVZNSv89gaJ/s/AHH5o87eboXfLvtFklgERc7RZZVsDdvSxdvUMCf+Y8t0lMaBWzPEVu2kpo7bFtoPB42M1rpp2DTKFf1C3QCAd0OS9Aq4Dt4FPdoolUaj1WMx2WMK91t5IkmdLF0yuLrXWMxWgDV3BviuzPXhHo9yUwE9R1DKBJ7I0ACIDviU4s9+Ei9+rCLM7R/bPWu2l3DA570AP33mYLxz8+b00H3X3ckVr1ya/st5bPI1dzoD+qzOCz+lLcFHm7nfuze2ZLHTiwJXa+XoqgDwoz7zBhKlntwAtT1T7vRI+AhfLhpcE458XQVcTxcsSdSayCCROO5q44IpGz5Apd1Jj5Hgs58I/G1AJ1t9SjL08t1ZeDPmM68DCkDZPBqLGB3xyNaBrPRpxTHhSluq7aZ3aWgBMxMB8Kh7Cwc2tgdTjwiTqMQWiX9AWMX6T+9uEMpEPAOZyRDbEGv9eoVN000r1o1y4oOObXHtvzZUhY88zPhpe+sJKZytUjtEUNrde2LgTcJtl23cwVZAt6UsBxa3rcQXbQiRlFaIb1Xj5zPY=
