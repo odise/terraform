@@ -3,17 +3,17 @@ language: go
 
 go:
   - 1.5
+  
+before_install:
+  - curl -L https://github.com/rlmcpherson/s3gof3r/releases/download/v0.5.0/gof3r_0.5.0_linux_amd64.tar.gz | tar xz --strip-components=1
 
 install:
-  - curl -L https://github.com/rlmcpherson/s3gof3r/releases/download/v0.5.0/gof3r_0.5.0_linux_amd64.tar.gz | tar xz --strip-components=1
   - mkdir -p $HOME/gopath/src/github.com/hashicorp/
   - ln -s $HOME/gopath/src/github.com/odise/terraform $HOME/gopath/src/github.com/hashicorp/terraform
   - make updatedeps
-
-script:
   - make test
   - make plugin-dev PLUGIN=provider-aws
-  - TF_LOG=DEBUG make testacc TEST=./builtin/providers/aws TESTARGS='-run=OpsworksApplication'
+  - make testacc TEST=./builtin/providers/aws TESTARGS='-run=OpsworksApplication'
   - XC_ARCH="amd64" XC_OS="linux darwin" make bin
   - ./gof3r put --no-md5 --endpoint s3-eu-west-1.amazonaws.com -b babbel-terraform -k darwin_amd64.zip -p pkg/darwin_amd64.zip
   - ./gof3r put --no-md5 --endpoint s3-eu-west-1.amazonaws.com -b babbel-terraform -k linux_amd64.zip -p pkg/linux_amd64.zip
