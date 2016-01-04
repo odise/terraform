@@ -6,7 +6,8 @@ go:
   - 1.5
 
 install: 
-  - ln -s $HOME/gopath/src/github.com/hashicorp/terraform $HOME/gopath/src/github.com/odise/terraform
+  - mkdir -p $HOME/gopath/src/github.com/hashicorp/
+  - ln -s $HOME/gopath/src/github.com/odise/terraform $HOME/gopath/src/github.com/hashicorp/terraform
   - make updatedeps
 
 script:
